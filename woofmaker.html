@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Woofmaker</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', sans-serif; background: #0e0e0e; color: #eee;
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; padding: 2rem 1rem; gap: 1.25rem;
+}
+h1 { font-size: 2.8rem; font-weight: 900; letter-spacing: 4px; text-transform: uppercase; }
+h1 span { color: #f5c242; }
+.sub { font-size: 0.85rem; color: #666; }
+.drop-zone {
+  border: 2px dashed #333; border-radius: 12px; padding: 2rem;
+  text-align: center; cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  background: #161616; width: 100%; max-width: 540px;
+}
+.drop-zone:hover, .drop-zone.dragover { border-color: #f5c242; background: #1e1e1e; }
+.drop-zone.done { border-color: #3a3; border-style: solid; }
+.drop-zone input { display: none; }
+.drop-icon { font-size: 2rem; margin-bottom: 8px; }
+.drop-label { font-size: 13px; color: #888; margin-top: 4px; }
+.drop-label strong { color: #ccc; }
+.preview-wrap { display: none; flex-direction: column; align-items: center; gap: 1rem; width: 100%; max-width: 740px; }
+#previewImg { max-width: 100%; border-radius: 10px; border: 1px solid #222; display: block; }
+.controls { display: flex; gap: 1.5rem; flex-wrap: wrap; justify-content: center; width: 100%; }
+.ctrl { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.ctrl label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+input[type=range] { width: 130px; accent-color: #f5c242; }
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+button {
+  background: transparent; border: 1px solid #333; border-radius: 8px;
+  padding: 9px 20px; color: #eee; font-family: inherit; font-size: 14px;
+  cursor: pointer; transition: background 0.15s;
+}
+button:hover { background: #1e1e1e; border-color: #555; }
+button:disabled { opacity: 0.4; cursor: default; }
+button.primary { background: #f5c242; color: #111; border-color: #f5c242; font-weight: 700; }
+button.primary:hover { background: #e6b530; }
+.status { font-size: 13px; color: #888; min-height: 18px; text-align: center; max-width: 600px; }
+.spinner { display: none; width: 20px; height: 20px; border: 2px solid #333; border-top-color: #f5c242; border-radius: 50%; animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-row { display: flex; align-items: center; gap: 10px; justify-content: center; }
+</style>
+</head>
+<body>
+<h1>Woof<span>maker</span></h1>
+<p class="sub">Home Alone — Buzz's girlfriend. Woof.</p>
+
+<div class="drop-zone" id="dropZone" onclick="document.getElementById('fileIn').click()">
+  <div class="drop-icon">🤳</div>
+  <div class="drop-label"><strong>Drop your photo here</strong></div>
+  <div class="drop-label">It replaces the face in the picture frame</div>
+  <input type="file" id="fileIn" accept="image/*">
+</div>
+
+<div class="preview-wrap" id="previewWrap">
+  <img id="previewImg" src="" alt="Preview">
+  <div class="controls">
+    <div class="ctrl">
+      <label>Zoom</label>
+      <input type="range" id="zoom" min="0.3" max="3" step="0.05" value="1">
+    </div>
+    <div class="ctrl">
+      <label>Left / Right</label>
+      <input type="range" id="nudgeX" min="-200" max="200" step="1" value="0">
+    </div>
+    <div class="ctrl">
+      <label>Up / Down</label>
+      <input type="range" id="nudgeY" min="-200" max="200" step="1" value="0">
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="primary" id="gifBtn">🎞 Make GIF</button>
+    <button id="resetBtn">Upload different photo</button>
+  </div>
+  <div class="loading-row">
+    <div class="spinner" id="spinner"></div>
+    <p class="status" id="status"></p>
+  </div>
+</div>
+
+<p class="status" id="statusMain">Drop your photo to get started.</p>
+
+<script>
+let photoFile = null;
+let debounceTimer = null;
+
+const dropZone = document.getElementById('dropZone');
+const previewWrap = document.getElementById('previewWrap');
+const previewImg = document.getElementById('previewImg');
+const statusEl = document.getElementById('status');
+const statusMain = document.getElementById('statusMain');
+const spinner = document.getElementById('spinner');
+
+function setStatus(msg, loading=false) {
+  statusEl.textContent = msg;
+  spinner.style.display = loading ? 'block' : 'none';
+}
+
+function handleFile(file) {
+  if (!file || !file.type.startsWith('image/')) { statusMain.textContent = 'Please upload an image file.'; return; }
+  photoFile = file;
+  dropZone.classList.add('done');
+  previewWrap.style.display = 'flex';
+  statusMain.style.display = 'none';
+  updatePreview();
+}
+
+async function updatePreview() {
+  if (!photoFile) return;
+  setStatus('Rendering preview…', true);
+  const fd = new FormData();
+  fd.append('photo', photoFile);
+  fd.append('zoom', document.getElementById('zoom').value);
+  fd.append('nudge_x', document.getElementById('nudgeX').value);
+  fd.append('nudge_y', document.getElementById('nudgeY').value);
+  try {
+    const res = await fetch('/preview', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    previewImg.src = URL.createObjectURL(blob);
+    setStatus('Looks good! Hit Make GIF when ready.');
+  } catch(e) {
+    setStatus('Preview error: ' + e.message);
+  }
+}
+
+function schedulePreview() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(updatePreview, 300);
+}
+
+['zoom','nudgeX','nudgeY'].forEach(id => {
+  document.getElementById(id).addEventListener('input', schedulePreview);
+});
+
+document.getElementById('fileIn').addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+
+document.getElementById('gifBtn').addEventListener('click', async () => {
+  if (!photoFile) return;
+  const btn = document.getElementById('gifBtn');
+  btn.disabled = true;
+  setStatus('Generating GIF — this takes a few seconds…', true);
+  const fd = new FormData();
+  fd.append('photo', photoFile);
+  fd.append('zoom', document.getElementById('zoom').value);
+  fd.append('nudge_x', document.getElementById('nudgeX').value);
+  fd.append('nudge_y', document.getElementById('nudgeY').value);
+  try {
+    const res = await fetch('/make_gif', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.download = 'woofmaker.gif';
+    a.href = url; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    setStatus('Done! GIF downloaded.');
+  } catch(e) {
+    setStatus('Error: ' + e.message);
+  }
+  btn.disabled = false;
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  photoFile = null;
+  previewWrap.style.display = 'none';
+  dropZone.classList.remove('done');
+  document.getElementById('fileIn').value = '';
+  document.getElementById('zoom').value = 1;
+  document.getElementById('nudgeX').value = 0;
+  document.getElementById('nudgeY').value = 0;
+  statusMain.style.display = '';
+  statusMain.textContent = 'Drop your photo to get started.';
+});
+</script>
+</body>
+</html>
