@@ -446,13 +446,16 @@ btnGif.addEventListener('click',async()=>{
   const tmpC=document.createElement('canvas');tmpC.width=FW;tmpC.height=FH;
   const tmpCtx=tmpC.getContext('2d');
 
-  for(let i=0;i<frameImages.length-1;i++){
+  // Frames 0-38: Kevin's reaction, include as-is
+  // Frame 39: original girl close-up, skip
+  // Frame 40: the frame we composite into, hold for 1 second
+  for(let i=0;i<=38;i++){
     tmpCtx.drawImage(frameImages[i],0,0,FW,FH);
     encoder.addFrame(tmpCtx.getImageData(0,0,FW,FH),FRAMES_DATA[i].duration);
-    if(i%5===0){statusEl.textContent=`Processing frame ${i+1}/${frameImages.length}…`;await new Promise(r=>setTimeout(r,0));}
+    if(i%5===0){statusEl.textContent=`Processing frame ${i+1}/39…`;await new Promise(r=>setTimeout(r,0));}
   }
 
-  const composite=warpFaceOnto(frameImages[frameImages.length-1],lastFaceImg,zoom,nx,ny);
+  const composite=warpFaceOnto(frameImages[40],lastFaceImg,zoom,nx,ny);
   tmpCtx.drawImage(composite,0,0);
   const compData=tmpCtx.getImageData(0,0,FW,FH);
   for(let i=0;i<10;i++) encoder.addFrame(compData,100);
