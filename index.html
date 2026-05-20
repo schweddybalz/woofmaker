@@ -467,21 +467,29 @@ btnGif.addEventListener('click',async()=>{
   await new Promise(r=>setTimeout(r,0));
 
   const bytes=encoder.encode();
-
-  // Convert to base64 data URL - more reliable than blob URLs cross-browser
-  let binary='';
-  for(let i=0;i<bytes.length;i++) binary+=String.fromCharCode(bytes[i]);
-  const b64=btoa(binary);
-  const dataUrl='data:image/gif;base64,'+b64;
-
-  // Also make a blob for the download button (handles large files better)
   const blob=new Blob([bytes],{type:'image/gif'});
   const blobUrl=URL.createObjectURL(blob);
+  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.MSStream;
+  const filename='woofmaker.gif';
 
-  btnDownload.href=blobUrl;
-  gifImg.src=dataUrl;
-  btnGif.disabled=false;
-  showStep('result');
+  if(isIOS && navigator.canShare && navigator.canShare({files:[new File([blob],filename,{type:'image/gif'})]})){
+    // iOS: trigger share sheet immediately with the real GIF file, then show result page
+    const gifFile=new File([blob],filename,{type:'image/gif'});
+    statusEl.textContent='Opening share sheet…';
+    navigator.share({files:[gifFile],title:'Praul Woofmaker GIF'})
+      .then(()=>showResult(blobUrl))
+      .catch(()=>showResult(blobUrl)); // show result even if cancelled
+  } else {
+    showResult(blobUrl);
+  }
+
+  function showResult(url){
+    btnDownload.href=url;
+    btnDownload.download=filename;
+    gifImg.src=url;
+    btnGif.disabled=false;
+    showStep('result');
+  }
 });
 
 showStep('upload');
